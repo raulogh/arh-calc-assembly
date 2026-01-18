@@ -2,440 +2,248 @@
 <html lang="ro">
 <head>
     <meta charset="UTF-8">
-    <title>Advanced ASM Simulator - BP & Infinite Regs</title>
+    <title>ASM Custom Simulator</title>
     <style>
-        :root { --bg: #1e1e1e; --panel: #252526; --accent: #007acc; --border: #3e3e42; --text: #d4d4d4; --success: #4ec9b0; --error: #f44336; }
-        body { font-family: 'Segoe UI', Consolas, sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: var(--bg); color: var(--text); }
+        :root { --bg: #1e1e1e; --panel: #252526; --accent: #007acc; --text: #d4d4d4; --green: #4ec9b0; }
+        body { font-family: 'Consolas', monospace; display: flex; flex-direction: column; height: 100vh; margin: 0; background: var(--bg); color: var(--text); }
         
-        /* Layout */
-        .toolbar { background: #333; padding: 10px; display: flex; gap: 10px; border-bottom: 1px solid var(--border); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .toolbar { background: #333; padding: 10px; display: flex; gap: 10px; border-bottom: 1px solid #444; }
         .main-container { display: flex; flex: 1; overflow: hidden; }
-        .column { flex: 1; display: flex; flex-direction: column; padding: 10px; min-width: 0; }
+        .col { flex: 1; display: flex; flex-direction: column; padding: 10px; border-right: 1px solid #444; }
         
-        /* Editor */
-        .editor-wrapper { flex: 1; position: relative; display: flex; flex-direction: column; }
-        textarea { flex: 1; background: var(--panel); color: #dcdcdc; font-family: 'Consolas', monospace; font-size: 14px; border: 1px solid var(--border); padding: 10px; resize: none; outline: none; line-height: 1.5; }
-        textarea:focus { border-color: var(--accent); }
+        textarea { flex: 1; background: var(--panel); color: #dcdcdc; border: 1px solid #444; padding: 10px; resize: none; font-size: 14px; line-height: 1.5; outline: none; }
         
-        /* Terminal & Registers */
-        #terminal { flex: 1; background: #111; color: #eee; font-family: 'Consolas', monospace; padding: 10px; overflow-y: auto; border: 1px solid var(--border); margin-top: 10px; font-size: 13px; }
-        .log-entry { margin-bottom: 2px; border-bottom: 1px solid #222; padding: 2px 0; }
-        .log-err { color: var(--error); font-weight: bold; }
-        .log-sys { color: var(--success); }
-        
-        /* Grid Registre */
-        .cpu-panel { background: #2d2d30; padding: 10px; border-radius: 4px; border: 1px solid var(--border); overflow-y: auto; max-height: 40vh; }
-        .reg-section-title { font-size: 12px; text-transform: uppercase; color: #888; margin: 10px 0 5px 0; border-bottom: 1px solid #444; }
-        .reg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; }
-        .reg-box { background: #3e3e42; padding: 5px; border-radius: 3px; font-size: 13px; text-align: center; border: 1px solid transparent; }
-        .reg-box.changed { animation: flash 0.5s; border-color: var(--success); }
-        .reg-label { font-weight: bold; color: var(--accent); font-size: 11px; display: block; }
-        .reg-val { font-family: monospace; color: white; }
+        #terminal { flex: 1; background: #111; padding: 10px; overflow-y: auto; font-size: 12px; border: 1px solid #444; margin-top: 10px; }
+        .log-line { border-bottom: 1px solid #222; padding: 2px 0; color: #888; }
+        .log-curr { color: var(--green); font-weight: bold; }
+        .log-err { color: #f44336; }
 
-        /* Buttons */
-        button { cursor: pointer; padding: 8px 16px; border: none; border-radius: 3px; background: var(--accent); color: white; font-weight: 600; transition: background 0.2s; }
-        button:hover { background: #0062a3; }
-        button.reset { background: #a31515; }
-        button.reset:hover { background: #801010; }
+        .reg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 5px; background: #333; padding: 10px; margin-bottom: 10px; }
+        .reg-box { background: #444; padding: 5px; text-align: center; font-size: 13px; border-radius: 3px; }
+        .reg-name { color: var(--accent); font-weight: bold; }
 
-        @keyframes flash { 0% { background: #205c4b; } 100% { background: #3e3e42; } }
+        button { padding: 8px 15px; border: none; background: var(--accent); color: white; cursor: pointer; font-weight: bold; }
+        button.red { background: #a31515; }
+        button:hover { opacity: 0.9; }
     </style>
 </head>
 <body>
 
 <div class="toolbar">
-    <button onclick="runProgram()">▶ Execută Tot</button>
-    <button onclick="loadExample('BP')">📂 Ex: Array cu BP</button>
-    <button onclick="loadExample('INF')">📂 Ex: Registre Infinite</button>
-    <button onclick="resetSystem()" class="reset">✖ Resetare</button>
+    <button onclick="runProgram()">▶ Execută Codul</button>
+    <button onclick="stepProgram()">➡ Pas cu Pas</button>
+    <button onclick="resetSystem()" class="red">✖ Reset (Curăță Tot)</button>
 </div>
 
 <div class="main-container">
-    <div class="column" style="flex: 1.2;">
-        <h3>📝 Editor Assembly</h3>
-        <div class="editor-wrapper">
-            <textarea id="codeEditor" spellcheck="false" placeholder="// Scrie cod aici..."></textarea>
-        </div>
+    <div class="col">
+        <h3>EDITOR</h3>
+        <textarea id="codeEditor" spellcheck="false">
+MOV BP, #5H
+MOV R1, 0H
+LOOP:
+    SUB R2, R1, #10
+    JZ DONE
+    LOAD R3, BP
+    ADD R4, R3, R3
+    STORE BP, R4
+    INC R2
+    INC BP
+    JUMP LOOP
+DONE:
+        </textarea>
     </div>
 
-    <div class="column">
-        <h3>⚡ Stare Procesor</h3>
-        <div class="cpu-panel">
-            <div class="reg-section-title">Registre Principale</div>
-            <div class="reg-grid" id="mainRegs"></div>
-            
-            <div class="reg-section-title">Pointeri & Flags</div>
-            <div class="reg-grid" id="pointerRegs"></div>
-
-            <div class="reg-section-title">Registre Generale (Dinamice)</div>
-            <div class="reg-grid" id="dynamicRegs"></div>
-        </div>
-
-        <h3>💻 Consolă Sistem</h3>
+    <div class="col">
+        <h3>REGISTRE & MEMORIE</h3>
+        <div class="reg-grid" id="regs"></div>
+        <h3>CONSOLA (Trace Execuție)</h3>
         <div id="terminal"></div>
     </div>
 </div>
 
 <script>
-    // --- CONFIGURAȚIE CPU ---
     let CPU = {
-        // Registre Standard
-        AX: 0, BX: 0, CX: 0, DX: 0,
-        // Pointeri
-        BP: 0, // Base Pointer
-        SP: 0, // Stack Pointer (neplementat logic stivă completă, dar există ca reg)
-        PC: 0, // Program Counter
-        // Flags
-        Z: 0, S: 0, 
-        // Memorie și Registre Infinite
-        memory: {},     // Hartă sparse pentru memorie
-        R: {},          // Stocare pentru R0...Rn
+        PC: 0, Z: 0, BP: 0,
+        R: {}, // Registre dinamice R1, R2, etc.
+        memory: {},
         labels: {}
     };
-
-    // Stare pentru UI (pentru a evidenția schimbările)
-    let oldCPU = JSON.parse(JSON.stringify(CPU));
-
-    // --- UTILITARE PARSARE ---
     
-    // Convertește "10", "10H", "#10" în număr
-    function parseNumber(str) {
-        if (!str) return 0;
-        let s = str.replace('#', '').trim().toUpperCase();
-        if (s.endsWith('H')) return parseInt(s.slice(0, -1), 16);
-        return parseInt(s, 10);
+    // Inițializare memorie cu ceva date ca să aibă LOAD ce să citească
+    function initMemory() {
+        CPU.memory[5] = 10;
+        CPU.memory[6] = 20;
+        CPU.memory[7] = 30;
     }
 
-    // Rezolvă adrese complexe: [BP+4], [100H], etc.
-    // Returnează { type: 'MEM', addr: 123 } sau { type: 'REG', name: 'AX' } sau { type: 'IMM', val: 5 }
-    function resolveOperand(op) {
-        op = op.trim().toUpperCase();
-
-        // 1. Adresare Indirectă / Memorie [...]
-        if (op.startsWith('[') && op.endsWith(']')) {
-            let content = op.slice(1, -1).replace(/\s+/g, ''); // Elimină spații: BP+4
-            
-            // Calcul adresă
-            let address = 0;
-            
-            // Verificăm dacă conține un registru de bază (BP, BX)
-            let baseReg = null;
-            let offsetStr = content;
-
-            if (content.includes('BP')) { baseReg = 'BP'; offsetStr = content.replace('BP', ''); }
-            else if (content.includes('BX')) { baseReg = 'BX'; offsetStr = content.replace('BX', ''); }
-            
-            // Calculăm baza
-            if (baseReg) address = CPU[baseReg];
-
-            // Calculăm offset-ul (ex: +4, -2, sau gol)
-            if (offsetStr.length > 0) {
-                if (offsetStr === '+') { /* eroare de sintaxă ignorată, treat as 0 */ } 
-                else {
-                    // Tratăm +200H sau -5
-                    // Hack simplu: folosim parseNumber dar gestionăm semnul
-                    let sign = 1;
-                    if (offsetStr.startsWith('-')) { sign = -1; offsetStr = offsetStr.substring(1); }
-                    else if (offsetStr.startsWith('+')) { offsetStr = offsetStr.substring(1); }
-                    
-                    address += sign * parseNumber(offsetStr);
-                }
-            } else if (!baseReg) {
-                // Doar număr în paranteză [100]
-                address = parseNumber(content);
-            }
-
-            return { type: 'MEM', addr: address };
-        }
-
-        // 2. Imediat (#valoare)
-        if (op.startsWith('#')) {
-            return { type: 'IMM', val: parseNumber(op) };
-        }
-
-        // 3. Registre Dinamice (Rx)
-        if (/^R\d+$/.test(op)) {
-            return { type: 'DYN_REG', name: op };
-        }
-
-        // 4. Registre Standard (AX, BX, BP...)
-        if (CPU.hasOwnProperty(op)) {
-            return { type: 'REG', name: op };
-        }
-
-        // 5. Etichete sau Memorie directă fără paranteze (opțional, tratăm ca valoare imediată/adresă)
-        // În acest simulator, dacă e număr simplu fără #, e considerat adresă doar în context de JMP, 
-        // dar pentru MOV AX, 100 -> unii asamblori zic Mem[100], alții Val 100.
-        // Vom presupune că 100 simplu este adresă pentru LOAD/STORE, dar valoare pentru MOV dacă nu are [].
-        // Pentru consistență cu exemplul dat: MOV 100H, AX -> 100H e adresă.
-        // Vom returna MEM dacă e numeric.
-        let val = parseNumber(op);
-        if (!isNaN(val)) return { type: 'MEM', addr: val };
-
-        return { type: 'ERR', val: op };
-    }
-
-    // Ia valoarea (pentru Source)
-    function getValue(opStr) {
-        let op = resolveOperand(opStr);
-        if (op.type === 'IMM') return op.val;
-        if (op.type === 'REG') return CPU[op.name];
-        if (op.type === 'DYN_REG') return CPU.R[op.name] || 0;
-        if (op.type === 'MEM') return CPU.memory[op.addr] || 0;
-        throw new Error(`Operand necunoscut: ${opStr}`);
-    }
-
-    // Setează valoarea (pentru Destination)
-    function setValue(opStr, val) {
-        let op = resolveOperand(opStr);
-        if (op.type === 'IMM') throw new Error("Nu poți scrie într-o constantă (#val)");
-        if (op.type === 'REG') {
-            CPU[op.name] = val;
-        } else if (op.type === 'DYN_REG') {
-            CPU.R[op.name] = val;
-        } else if (op.type === 'MEM') {
-            CPU.memory[op.addr] = val;
-        } else {
-            throw new Error(`Destinație invalidă: ${opStr}`);
-        }
-    }
-
-    // --- EXECUȚIE ---
-
-    function resetSystem() {
-        CPU = { AX: 0, BX: 0, CX: 0, DX: 0, BP: 0, SP: 0, PC: 0, Z: 0, S: 0, memory: {}, R: {}, labels: {} };
-        oldCPU = JSON.parse(JSON.stringify(CPU));
-        document.getElementById('terminal').innerHTML = "<div class='log-sys'>System Reset. Ready.</div>";
-        updateUI();
-    }
-
-    function runProgram() {
-        const code = document.getElementById('codeEditor').value;
-        const lines = code.split('\n');
-        
-        resetSystem();
-
-        // Pas 1: Scanare Etichete
-        lines.forEach((line, idx) => {
-            let clean = line.split('//')[0].split(';')[0].trim();
-            if (clean.endsWith(':')) {
-                let labelName = clean.slice(0, -1);
-                CPU.labels[labelName] = idx;
-            }
-        });
-
-        // Pas 2: Execuție
-        let steps = 0;
-        try {
-            while (CPU.PC < lines.length) {
-                if (steps > 5000) throw new Error("Infinite Loop Protection (5000+ pași)");
-                
-                let currentLinePC = CPU.PC;
-                executeInstruction(lines[CPU.PC], currentLinePC);
-                
-                // Increment PC doar dacă nu a fost modificat de un JUMP (simplificare)
-                // În realitate PC crește, apoi se face jump. Aici, instrucțiunile JMP modifică direct PC-ul.
-                // Dacă PC-ul este același cu cel de la începutul instrucțiunii (și nu e o linie goală), îl incrementăm.
-                // Totuși, JMP setează PC la noua valoare. 
-                // Logica: Dacă instrucțiunea NU e JMP/CALL, PC++.
-                // Dar executeInstruction se ocupă de PC doar la JMP.
-                // Cea mai simplă metodă: salvăm PC înainte. Dacă e diferit după execuție, nu facem nimic.
-                
-                if (CPU.PC === currentLinePC) {
-                    CPU.PC++; 
-                }
-                steps++;
-            }
-            logTerminal("Execuție finalizată cu succes.", "sys");
-        } catch (e) {
-            logTerminal(`Eroare Linia ${CPU.PC + 1}: ${e.message}`, "err");
-        }
-        updateUI();
-    }
-
-    function executeInstruction(rawLine, currentPC) {
-        let line = rawLine.split('//')[0].split(';')[0].trim();
-        if (!line || line.endsWith(':')) return; // Linii goale sau etichete
-
-        // Regex inteligent pentru split: separă prin spațiu sau virgulă, ignoră spații în paranteze
-        // Simplificare: înlocuim virgula cu spațiu și facem split
-        // Pentru a păstra [BP + 4] unit, e complicat cu split simplu.
-        // Vom face un mic parser manual pentru argumente.
-        
-        let firstSpace = line.indexOf(' ');
-        if (firstSpace === -1) firstSpace = line.length;
-        
-        let cmd = line.substring(0, firstSpace).toUpperCase();
-        let argsStr = line.substring(firstSpace).trim();
-        
-        // Split args by comma, but respect brackets
-        let args = [];
-        let currentArg = '';
-        let bracketDepth = 0;
-        
-        for (let char of argsStr) {
-            if (char === '[') bracketDepth++;
-            if (char === ']') bracketDepth--;
-            if (char === ',' && bracketDepth === 0) {
-                args.push(currentArg.trim());
-                currentArg = '';
-            } else {
-                currentArg += char;
-            }
-        }
-        if (currentArg.trim()) args.push(currentArg.trim());
-
-        let p1 = args[0];
-        let p2 = args[1];
-
-        switch (cmd) {
-            case 'MOV':
-                setValue(p1, getValue(p2));
-                break;
-            case 'ADD':
-                let resAdd = getValue(p1) + getValue(p2);
-                setValue(p1, resAdd);
-                CPU.Z = (resAdd === 0) ? 1 : 0;
-                break;
-            case 'SUB':
-                let resSub = getValue(p1) - getValue(p2);
-                setValue(p1, resSub);
-                CPU.Z = (resSub === 0) ? 1 : 0;
-                break;
-            case 'MUL':
-                setValue(p1, getValue(p1) * getValue(p2));
-                break;
-            case 'DIV':
-                let divisor = getValue(p2);
-                if (divisor === 0) throw new Error("Împărțire la zero!");
-                setValue(p1, Math.floor(getValue(p1) / divisor));
-                break;
-            case 'INC':
-                let vInc = getValue(p1) + 1;
-                setValue(p1, vInc);
-                CPU.Z = (vInc === 0) ? 1 : 0;
-                break;
-            case 'DEC':
-                let vDec = getValue(p1) - 1;
-                setValue(p1, vDec);
-                CPU.Z = (vDec === 0) ? 1 : 0;
-                break;
-            case 'CMP':
-                let diff = getValue(p1) - getValue(p2);
-                CPU.Z = (diff === 0) ? 1 : 0;
-                CPU.S = (diff < 0) ? 1 : 0;
-                break;
-            case 'JMP':
-                if (CPU.labels.hasOwnProperty(p1)) CPU.PC = CPU.labels[p1] - 1; // -1 pt că bucla principală face PC++
-                else throw new Error(`Etichetă inexistentă: ${p1}`);
-                break;
-            case 'JZ':
-            case 'JE':
-                if (CPU.Z === 1) CPU.PC = CPU.labels[p1] - 1;
-                break;
-            case 'JNZ':
-            case 'JNE':
-                if (CPU.Z === 0) CPU.PC = CPU.labels[p1] - 1;
-                break;
-            case 'LOAD': // Alias pt MOV reg, mem
-                // Suportă LOAD A, 200 (direct mem address)
-                setValue('AX', CPU.memory[parseNumber(p1)] || 0); // Simplificare pt compatibilitate
-                break;
-            case 'STORE': // Alias
-                CPU.memory[parseNumber(p1)] = CPU.AX;
-                break;
-            case 'OUT':
-                logTerminal(`OUTPUT Port ${p1}: ${getValue(p1)} (Valoare)`, "sys");
-                break;
-            case 'HLT':
-                CPU.PC = 99999; // Force stop
-                break;
-            default:
-                throw new Error(`Instrucțiune necunoscută: ${cmd}`);
-        }
-    }
-
-    // --- UI HELPERS ---
-
-    function logTerminal(msg, type = "") {
+    function log(msg, type='') {
         const t = document.getElementById('terminal');
-        t.innerHTML += `<div class="log-entry log-${type}">> ${msg}</div>`;
+        t.innerHTML += `<div class="log-line ${type}">${msg}</div>`;
         t.scrollTop = t.scrollHeight;
     }
 
-    function createRegBox(label, val, oldVal) {
-        let changed = val !== oldVal ? 'changed' : '';
-        // Formatăm hex dacă e mare, altfel decimal
-        let display = val; 
-        if (Math.abs(val) > 255) display = `0x${val.toString(16).toUpperCase()}`;
-        
-        return `<div class="reg-box ${changed}">
-            <span class="reg-label">${label}</span>
-            <span class="reg-val">${display}</span>
-        </div>`;
-    }
-
     function updateUI() {
-        // 1. Registre Principale
-        const main = ['AX', 'BX', 'CX', 'DX'];
-        document.getElementById('mainRegs').innerHTML = main.map(r => createRegBox(r, CPU[r], oldCPU[r])).join('');
+        let html = `
+            <div class="reg-box"><span class="reg-name">PC</span> ${CPU.PC}</div>
+            <div class="reg-box"><span class="reg-name">BP</span> ${CPU.BP}</div>
+            <div class="reg-box"><span class="reg-name">Z-Flag</span> ${CPU.Z}</div>
+        `;
+        // Afisare registre R...
+        Object.keys(CPU.R).sort().forEach(k => {
+            html += `<div class="reg-box"><span class="reg-name">${k}</span> ${CPU.R[k]}</div>`;
+        });
+        
+        // Afisare Memorie (doar ce e folosit)
+        Object.keys(CPU.memory).forEach(addr => {
+             html += `<div class="reg-box" style="border:1px solid #555"><span class="reg-name">MEM[${addr}]</span> ${CPU.memory[addr]}</div>`;
+        });
 
-        // 2. Pointeri
-        const ptrs = ['BP', 'SP', 'PC', 'Z'];
-        document.getElementById('pointerRegs').innerHTML = ptrs.map(r => createRegBox(r, CPU[r], oldCPU[r])).join('');
-
-        // 3. Registre Dinamice (doar cele folosite)
-        let dynHTML = "";
-        let keys = Object.keys(CPU.R).sort((a,b) => parseInt(a.slice(1)) - parseInt(b.slice(1))); // sort R1, R2, R10
-        if (keys.length === 0) dynHTML = "<div style='color:#666; font-size:12px; padding:5px;'>Niciun registru Rx utilizat.</div>";
-        else {
-            keys.forEach(k => {
-                dynHTML += createRegBox(k, CPU.R[k], oldCPU.R ? oldCPU.R[k] : 0);
-            });
-        }
-        document.getElementById('dynamicRegs').innerHTML = dynHTML;
-
-        // Salvează starea pentru următorul update
-        oldCPU = JSON.parse(JSON.stringify(CPU));
+        document.getElementById('regs').innerHTML = html;
     }
 
-    // --- EXEMPLE ---
-    function loadExample(type) {
-        let code = "";
-        if (type === 'BP') {
-            code = `// Simulare Array cu BP (Base Pointer)
-// Vrem sa facem v[2] = 55
-// Memoria incepe la adresa 100H
+    function resetSystem() {
+        CPU = { PC: 0, Z: 0, BP: 0, R: {}, memory: {}, labels: {} };
+        initMemory(); // Repopulam memoria
+        document.getElementById('terminal').innerHTML = "";
+        log("Sistem resetat. Memoria la adresa 5,6,7 a fost inițializată cu 10,20,30.");
+        updateUI();
+    }
 
-MOV BP, #100H  ; Setam baza la 100H
-MOV AX, #55    ; Valoarea de salvat
+    // --- PARSER ---
+    function parseVal(op) {
+        if(!op) return 0;
+        op = op.trim().toUpperCase();
+        if(op.includes('#')) return parseInt(op.replace('#','').replace('H',''), 16); // Hex supports #10H
+        if(op.endsWith('H')) return parseInt(op.replace('H',''), 16); // Hex supports 10H
+        if(op === 'BP') return CPU.BP;
+        if(CPU.R[op] !== undefined) return CPU.R[op]; // E registru existent
+        if(op.startsWith('R')) return 0; // Registru nou, valoare default 0
+        if(!isNaN(parseInt(op))) return parseInt(op); // Numar simplu
+        return 0;
+    }
 
-// Scriem la BP + 2 (adica 102H)
-MOV [BP + 2], AX 
+    function setVal(op, val) {
+        op = op.trim().toUpperCase();
+        if(op === 'BP') CPU.BP = val;
+        else CPU.R[op] = val;
+    }
 
-// Verificam citirea inapoi in R1
-MOV R1, [BP + 2]
+    function executeLine(rawLine) {
+        // Curatare tab-uri si spatii duble
+        let line = rawLine.replace(/\t/g, ' ').trim();
+        if(!line || line.endsWith(':')) return true;
 
-// Incrementam indexul
-ADD BP, #1
-MOV [BP], #99  ; Scriem la 101H
-`;
-        } else if (type === 'INF') {
-            code = `// Utilizare Registre Infinite
-MOV R0, #10
-MOV R99, #500
-MOV R123, #1
+        // Logging executie
+        log(`[L${CPU.PC+1}] Execut: <span class="log-curr">${line}</span>`);
 
-ADD R0, R99  ; R0 devine 510
-MOV R5000, R0 ; Putem folosi orice index
-`;
+        // Parsare argumente (split la virgula sau spatiu)
+        let parts = line.replace(/,/g, ' ').split(/\s+/);
+        let cmd = parts[0].toUpperCase();
+        let args = parts.slice(1);
+
+        try {
+            switch(cmd) {
+                case 'MOV': 
+                    setVal(args[0], parseVal(args[1])); 
+                    break;
+                
+                case 'SUB': 
+                    // Sintaxa 3 args: SUB R2, R1, #10 -> R2 = R1 - 10
+                    if(args.length === 3) {
+                        let res = parseVal(args[1]) - parseVal(args[2]);
+                        setVal(args[0], res);
+                        CPU.Z = (res === 0) ? 1 : 0;
+                    } else {
+                        // Sintaxa 2 args
+                        let res = parseVal(args[0]) - parseVal(args[1]);
+                        setVal(args[0], res);
+                        CPU.Z = (res === 0) ? 1 : 0;
+                    }
+                    break;
+
+                case 'ADD':
+                    // Sintaxa 3 args: ADD R4, R3, R3 -> R4 = R3 + R3
+                    if(args.length === 3) {
+                        let res = parseVal(args[1]) + parseVal(args[2]);
+                        setVal(args[0], res);
+                    } else {
+                        setVal(args[0], parseVal(args[0]) + parseVal(args[1]));
+                    }
+                    break;
+
+                case 'LOAD': 
+                    // LOAD R3, BP -> R3 = Memory[BP]
+                    let addrLoad = parseVal(args[1]); // BP val
+                    let valLoad = CPU.memory[addrLoad] || 0;
+                    setVal(args[0], valLoad);
+                    break;
+
+                case 'STORE':
+                    // STORE BP, R4 -> Memory[BP] = R4
+                    let addrStore = parseVal(args[0]);
+                    let valStore = parseVal(args[1]);
+                    CPU.memory[addrStore] = valStore;
+                    break;
+
+                case 'INC':
+                    let v = parseVal(args[0]) + 1;
+                    setVal(args[0], v);
+                    break;
+
+                case 'JUMP':
+                case 'JMP':
+                    let lbl = args[0];
+                    if(CPU.labels[lbl] !== undefined) CPU.PC = CPU.labels[lbl] - 1;
+                    break;
+
+                case 'JZ':
+                    if(CPU.Z === 1) CPU.PC = CPU.labels[args[0]] - 1;
+                    break;
+            }
+        } catch(e) {
+            log("Eroare: " + e.message, "log-err");
+            return false;
         }
-        document.getElementById('codeEditor').value = code;
+        return true;
+    }
+
+    function prepareCode() {
         resetSystem();
+        const text = document.getElementById('codeEditor').value;
+        const lines = text.split('\n');
+        
+        // Pas 1: Scanare etichete
+        lines.forEach((l, i) => {
+            let clean = l.trim().replace(/\t/g, '');
+            if(clean.endsWith(':')) {
+                CPU.labels[clean.slice(0, -1)] = i;
+            }
+        });
+        return lines;
     }
 
-    // Init
-    loadExample('BP');
+    function runProgram() {
+        const lines = prepareCode();
+        let steps = 0;
+        
+        let interval = setInterval(() => {
+            if(CPU.PC >= lines.length || steps > 100) { // Limitare la 100 pasi pt siguranta
+                clearInterval(interval);
+                log("Execuție finalizată (sau limită pași atinsă).");
+                return;
+            }
+            
+            executeLine(lines[CPU.PC]);
+            CPU.PC++;
+            updateUI();
+            steps++;
+        }, 100); // Executa o linie la 100ms ca sa vezi ce se intampla
+    }
+
+    // Initializeaza la pornire
+    initMemory();
+    updateUI();
 </script>
 </body>
 </html>
