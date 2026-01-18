@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <title>ASM Simulator - Materie Arhitectura Sistemelor</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; height: 100vh; margin: 0; background: #1e1e1e; color: white; }
+        .toolbar { background: #333; padding: 10px; display: flex; gap: 10px; border-bottom: 2px solid #444; }
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        #editor-container, #terminal-container { flex: 1; display: flex; flex-direction: column; padding: 10px; }
+        textarea { flex: 1; background: #252526; color: #d4d4d4; font-family: 'Consolas', monospace; font-size: 14px; border: 1px solid #444; padding: 10px; resize: none; }
+        #terminal { flex: 1; background: #000; color: #0f0; font-family: 'Consolas', monospace; padding: 10px; overflow-y: auto; border: 1px solid #444; }
+        .reg-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 10px; background: #333; padding: 10px; border-radius: 4px; }
+        .reg-item { font-size: 12px; border-bottom: 1px solid #555; }
+        button { cursor: pointer; padding: 8px 15px; border: none; border-radius: 3px; background: #007acc; color: white; font-weight: bold; }
+        button:hover { background: #005a9e; }
+        .label-vars { color: #569cd6; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="toolbar">
+    <button onclick="runProgram()">▶ Execută</button>
+    <button onclick="stepProgram()">➡ Pas cu Pas</button>
+    <button onclick="translateCpp()">⇄ Traducător C++ (Exemple)</button>
+    <button onclick="resetSystem()" style="background: #a31515;">Reset</button>
+</div>
+
+<div class="main-container">
+    <!-- Editorul de Cod -->
+    <div id="editor-container">
+        <h3 style="margin-top:0">📝 Editor Assembly</h3>
+        <textarea id="codeEditor" placeholder="Scrie codul ASM aici... Acest program a fost facut cu Gemini in graba, pare sa functioneze, so why not?">
+// Exemplu: Suma a + b
+MOV AX, #5
+MOV BX, #3
+ADD AX, BX
+MOV 100H, AX  // Salvează rezultatul (8) la adresa 100H
+        </textarea>
+    </div>
+
+    <!-- Terminalul și Starea Registrelor -->
+    <div id="terminal-container">
+        <h3 style="margin-top:0">💻 Stare Sistem & Console</h3>
+        <div class="reg-grid" id="regDisplay">
+            <!-- Registrele vor fi generate aici -->
+        </div>
+        <div id="terminal"></div>
+    </div>
+</div>
+
+<script>
+    // Configurația inițială a procesorului conform surselor [2, 3]
+    let CPU = {
+        A: 0, AX: 0, BX: 0, 
+        R0: 0, R1: 0, R2: 0,
+        PC: 0, 
+        Z: 0, S: 0, C: 0, // Flags [9]
+        memory: {},
+        labels: {}
+    };
+
+    const terminal = document.getElementById('terminal');
+
+    function logTerminal(msg) {
+        terminal.innerHTML += `<div>> ${msg}</div>`;
+        terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function updateUI() {
+        const grid = document.getElementById('regDisplay');
+        grid.innerHTML = `
+            <div class="reg-item">A: ${CPU.A}</div>
+            <div class="reg-item">AX: ${CPU.AX}</div>
+            <div class="reg-item">BX: ${CPU.BX}</div>
+            <div class="reg-item">R0: ${CPU.R0}</div>
+            <div class="reg-item">R1: ${CPU.R1}</div>
+            <div class="reg-item">R2: ${CPU.R2}</div>
+            <div class="reg-item">PC: ${CPU.PC}</div>
+            <div class="reg-item">Z-Flag: ${CPU.Z}</div>
+        `;
+    }
+
+    function resetSystem() {
+        CPU = { A: 0, AX: 0, BX: 0, R0: 0, R1: 0, R2: 0, PC: 0, Z: 0, S: 0, C: 0, memory: {}, labels: {} };
+        terminal.innerHTML = "";
+        logTerminal("Sistem resetat.");
+        updateUI();
+    }
+
+    function translateCpp() {
+        const cppCode = `int a = 5;\nint b = 3;\nint c = a + b;`;
+        const asmEquivalent = `// Traducere automata\nMOV AX, #5\nMOV BX, #3\nADD AX, BX\nMOV 100H, AX`;
+        document.getElementById('codeEditor').value = asmEquivalent;
+        logTerminal("Cod C++ tradus în ASM (conform tiparului slide 11).");
+    }
+
+    function runProgram() {
+        const lines = document.getElementById('codeEditor').value.split('\n');
+        resetSystem();
+        
+        // Prima trecere: identificare etichete (ex: ET:) [8, 10]
+        lines.forEach((line, index) => {
+            if(line.includes(':')) {
+                let label = line.split(':').trim();
+                CPU.labels[label] = index;
+            }
+        });
+
+        // Execuție
+        while (CPU.PC < lines.length) {
+            if (!executeLine(lines[CPU.PC])) break;
+            CPU.PC++;
+            if (CPU.PC > 1000) { logTerminal("EROARE: Buclă infinită detectată!"); break; }
+        }
+        updateUI();
+    }
+
+    function executeLine(rawLine) {
+        let line = rawLine.split('//').split(';').trim(); // Elimină comentarii [5]
+        if (!line || line.includes(':')) return true;
+
+        let parts = line.replace(/,/g, ' ').split(/\s+/);
+        let cmd = parts.toUpperCase();
+        let p1 = parts[11];
+        let p2 = parts[1];
+
+        // Helper pentru a lua valoarea unui operand (Registru, #Valoare sau Memorie)
+        function getValue(op) {
+            if (!op) return 0;
+            if (op.startsWith('#')) return parseInt(op.substring(1)); // Imediat [12]
+            if (CPU.hasOwnProperty(op.toUpperCase())) return CPU[op.toUpperCase()];
+            if (op.endsWith('H')) return CPU.memory[op] || 0; // Hex memory [13]
+            return CPU.memory[op] || 0;
+        }
+
+        try {
+            switch(cmd) {
+                case 'MOV': // MOV dest, src [1]
+                    if(p1.toUpperCase() in CPU) CPU[p1.toUpperCase()] = getValue(p2);
+                    else CPU.memory[p1] = getValue(p2);
+                    break;
+                case 'LOAD': // LOAD A, adr [1, 14]
+                    CPU.A = getValue(p1);
+                    break;
+                case 'STORE': // STORE A, adr [1, 14]
+                    CPU.memory[p1] = CPU.A;
+                    break;
+                case 'ADD': // ADD AX, BX [15]
+                    CPU.AX = CPU.AX + getValue(p2);
+                    CPU.Z = (CPU.AX === 0) ? 1 : 0;
+                    break;
+                case 'ADDI': // ADDI A, #val [12, 15]
+                    CPU.A += getValue(p1);
+                    break;
+                case 'SUB': // SUB A, adr [15]
+                    CPU.A -= getValue(p1);
+                    CPU.Z = (CPU.A === 0) ? 1 : 0;
+                    break;
+                case 'INC': CPU.A++; break;
+                case 'DEC': 
+                    let target = p1 ? p1.toUpperCase() : 'A';
+                    CPU[target]--; 
+                    CPU.Z = (CPU[target] === 0) ? 1 : 0;
+                    break;
+                case 'JZ': // Salt dacă Zero [8, 16]
+                    if (CPU.Z === 1) CPU.PC = CPU.labels[p1] - 1;
+                    break;
+                case 'JNZ': // Salt dacă NU e Zero [16, 17]
+                    if (CPU.Z === 0) CPU.PC = CPU.labels[p1] - 1;
+                    break;
+                case 'JMP': // Salt necondiționat [16]
+                    CPU.PC = CPU.labels[p1] - 1;
+                    break;
+                case 'IN': // IN A, port [18]
+                    CPU.A = prompt(`Citesc de la portul ${p1}. Introdu o valoare:`) || 0;
+                    break;
+                case 'OUT': // OUT A, port [18]
+                    logTerminal(`PORT ${p1} afișează: ${CPU.A}`);
+                    break;
+                default:
+                    logTerminal(`Instrucțiune necunoscută: ${cmd}`);
+            }
+        } catch(e) {
+            logTerminal(`Eroare la linia ${CPU.PC}: ${e.message}`);
+            return false;
+        }
+        return true;
+    }
+
+    // Inițializare
+    updateUI();
+</script>
+</body>
+</html>
